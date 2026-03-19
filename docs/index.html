@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FSM Rendering | Noam Parser</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/viz.js/2.1.2/viz.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/viz.js/2.1.2/full.render.js"></script>
+    <style>
+        :root {
+            --primary-color: #0078D7; /* Microsoft Blue */
+            --primary-hover: #005A9E;
+            --bg-color: #f0f2f5;
+            --card-bg: #ffffff;
+            --text-main: #333333;
+            --text-muted: #666666;
+            --border-color: #e1e4e8;
+            --success-color: #107C10; /* Microsoft Green */
+            --error-color: #d83b01;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
+            background-color: var(--bg-color); 
+            color: var(--text-main); 
+            line-height: 1.6;
+            padding: 20px;
+        }
+
+        /* 頂部標題區域 */
+        header {
+            max-width: 1200px;
+            margin: 0 auto 30px auto;
+            text-align: center;
+        }
+        header h1 { font-weight: 600; font-size: 2.2rem; color: var(--text-main); }
+        header p { color: var(--text-muted); font-size: 1.1rem; margin-top: 5px; }
+
+        /* 主容器排版 */
+        .wrapper {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1.5fr;
+            gap: 25px;
+        }
+
+        @media (max-width: 900px) {
+            .wrapper { grid-template-columns: 1fr; }
+        }
+
+        /* 卡片通用樣式 */
+        .card {
+            background: var(--card-bg);
+            border-radius: 8px;
+            padding: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            border: 1px solid var(--border-color);
+        }
+        .card h2 { font-size: 1.4rem; margin-bottom: 15px; color: var(--text-main); border-left: 5px solid var(--primary-color); padding-left: 10px; }
+        .card h3 { font-size: 1.1rem; margin: 15px 0 8px 0; color: var(--text-muted); }
+
+        /* 左側：輸入區域 */
+        .left-panel { display: flex; flex-direction: column; gap: 15px; }
+        textarea { 
+            width: 100%; 
+            height: 480px; 
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace; 
+            font-size: 14px; 
+            padding: 15px; 
+            border-radius: 6px; 
+            border: 1px solid var(--border-color); 
+            resize: vertical;
+            background-color: #fafafa;
+        }
+        textarea:focus { outline: 2px solid var(--primary-color); border-color: transparent; }
+
+        /* 按鈕群組樣式 */
+        .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
+        button { 
+            padding: 10px 20px; 
+            border: none; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            font-size: 14px; 
+            font-weight: 500;
+            transition: all 0.2s ease; 
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        /* 不同類型的按鈕 */
+        .btn-main { background-color: var(--primary-color); color: white; }
+        .btn-main:hover { background-color: var(--primary-hover); }
+        .btn-success { background-color: var(--success-color); color: white; }
+        .btn-success:hover { background-color: #0b5e0b; }
+        .btn-secondary { background-color: #f0f0f0; color: #333; border: 1px solid #ccc; }
+        .btn-secondary:hover { background-color: #e0e0e0; }
+
+        /* 右側：輸出區域 */
+        .right-panel { display: flex; flex-direction: column; gap: 20px; }
+        
+        #output-area {
+            border: 1px dashed #ccc; 
+            border-radius: 6px;
+            min-height: 400px; 
+            flex-grow: 1; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            overflow: auto; 
+            background-color: #fafafa;
+            padding: 10px;
+        }
+        svg { max-width: 100%; height: auto; }
+
+        /* 說明文字區域樣式 */
+        .info-panel { font-size: 0.95rem; color: var(--text-main); }
+        .info-panel p { margin-bottom: 10px; }
+        .info-panel ul, .info-panel ol { margin-left: 20px; margin-bottom: 15px; }
+        .info-panel li { margin-bottom: 5px; }
+        .code-inline { background-color: #f0f0f0; padding: 2px 5px; border-radius: 4px; font-family: monospace; font-size: 0.9em; }
+        
+        /* 連結樣式 */
+        .links { margin-top: 15px; display: flex; gap: 15px; flex-wrap: wrap; }
+        .links a { color: var(--primary-color); text-decoration: none; font-size: 0.9rem; }
+        .links a:hover { text-decoration: underline; }
+
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>FSM 渲染工具</h1>
+        <p>基於 Noam 語法與 Graphviz 的有限狀態機視覺化工具</p>
+    </header>
+
+    <div class="wrapper">
+        <div class="left-panel">
+            <div class="card">
+                <h2>1. 編輯 FSM 語法</h2>
+                <textarea id="fsmInput" spellcheck="false">
+#states
+sG
+sY
+sR
+
+#initial
+sG
+
+#accepting
+sG
+sY
+sR
+
+#alphabet
+cnt
+Jump
+Set
+Stop
+
+#transitions
+sG:cnt>sY
+sY:cnt>sR
+sR:cnt>sG
+
+sG:Jump>sR
+sY:Jump>sR
+sR:Jump>sR
+
+sG:Set>sG
+sY:Set>sG
+sR:Set>sG
+
+sG:Stop>sG
+sY:Stop>sY
+sR:Stop>sR
+</textarea>
+                <div class="btn-group" style="margin-top: 15px;">
+                    <button class="btn-main" onclick="renderFSM()">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="white"><path d="M11.53 1.133l3.996 3.996-3.996 3.996V6.13H6.131V11.53H9.13l-3.996 3.996-3.996-3.996H4.13V4.131h7.399V1.133z"/></svg>
+                        渲染圖形 (Render)
+                    </button>
+                    <button class="btn-secondary" onclick="resetExample()">重置範例</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="right-panel">
+            <div class="card" style="flex-grow: 1; display: flex; flex-direction: column;">
+                <h2>2. 渲染結果與下載</h2>
+                <div class="btn-group" style="margin-bottom: 15px;">
+                    <button class="btn-secondary" onclick="downloadSVG()">下載向量圖 (SVG)</button>
+                    <button class="btn-success" onclick="downloadPNG()">下載圖片 (PNG)</button>
+                </div>
+                <div id="output-area">
+                    <span style="color: #999; font-size: 0.9rem;">點擊左側「渲染圖形」按鈕。</span>
+                </div>
+            </div>
+
+            <div class="card info-panel">
+                <h2>使用說明與相關連結</h2>
+                <p>這是一個輕量級的前端工具，專門用來將特定格式的 FSM 文本語法轉換成符合教科書規範的狀態轉移圖。</p>
+                
+                <h3>Noam 語法指南</h3>
+                <ul>
+                    <li><span class="code-inline">#states</span>: 定義所有狀態名稱，一行一個。</li>
+                    <li><span class="code-inline">#initial</span>: 定義唯一的起始狀態（圖中會有入口箭頭）。</li>
+                    <li><span class="code-inline">#accepting</span>: 定義「接受/終止狀態」（圖中顯示為<strong>雙圓圈</strong>）。</li>
+                    <li><span class="code-inline">#alphabet</span>: [選填] 定義輸入字母表，僅作註解用。</li>
+                    <li><span class="code-inline">#transitions</span>: 定義轉移邏輯，格式為 <span class="code-inline">來源狀態:輸入>目標狀態</span>。</li>
+                </ul>
+                
+                <h3>相關資源連結</h3>
+                <p>本工具基於以下開源技術構建：</p>
+                <div class="links">
+                    <a href="https://github.com/ivanzuzak/noam" target="_blank" rel="noopener">Noam Library (原始語法來源)</a>
+                    <a href="https://github.com/mdaines/viz.js" target="_blank" rel="noopener">Viz.js (Graphviz For Web)</a>
+                    <a href="https://graphviz.org/" target="_blank" rel="noopener">Graphviz ( underlying engine)</a>
+                </div>
+                <div class="links" style="margin-top: 5px; border-top: 1px solid #f0f0f0; padding-top: 5px;">
+                    <a href="https://ivanzuzak.info/noam/webapps/fsm_simulator/" target="_blank" rel="noopener">外部連結：原始 Noam 在線模擬器</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentSVG = "";
+        const defaultExample = document.getElementById('fsmInput').value;
+
+        // 解析 Noam 語法並轉換為 Graphviz DOT 格式
+        function parseToDot(text) {
+            const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith('//'));
+            let currentSection = '';
+            let initial = '';
+            let accepting = [];
+            let transitions = {};
+
+            lines.forEach(line => {
+                if (line.startsWith('#')) {
+                    currentSection = line;
+                } else {
+                    if (currentSection === '#initial') initial = line;
+                    else if (currentSection === '#accepting') accepting.push(line);
+                    else if (currentSection === '#transitions') {
+                        // 解析格式: 來源:輸入>目標
+                        const match = line.match(/(.+):(.+)>(.+)/);
+                        if (match) {
+                            const src = match[1], input = match[2], dst = match[3];
+                            const key = `${src}->${dst}`;
+                            if (!transitions[key]) transitions[key] = [];
+                            transitions[key].push(input);
+                        }
+                    }
+                }
+            });
+
+            // 構建 DOT 語法
+            let dot = 'digraph fsm {\n  rankdir=LR;\n  size="8,5";\n';
+            dot += '  node [fontname="Segoe UI, Helvetica,Arial,sans-serif", style=filled, fillcolor="#fafafa"];\n';
+            dot += '  edge [fontname="Segoe UI, Helvetica,Arial,sans-serif", color="#444", fontcolor="#111"];\n';
+            
+            // 處理接受狀態 (雙圓圈)
+            if (accepting.length > 0) {
+                dot += `  node [shape = doublecircle, fillcolor="#fbfbfb"]; ${accepting.join(' ')};\n`;
+            }
+            dot += '  node [shape = circle];\n'; // 其餘為單圓圈
+
+            // 處理初始狀態箭頭
+            if (initial) {
+                dot += '  __start [shape=none, label="", width=0, height=0];\n';
+                dot += `  __start -> ${initial} [width=2];\n`;
+            }
+
+            // 處理轉移線條 (合併相同方向的輸入條件)
+            for (const [edge, inputs] of Object.entries(transitions)) {
+                const [src, dst] = edge.split('->');
+                // 對轉移標籤進行排序和去重
+                const sortedInputs = [...new Set(inputs)].sort();
+                dot += `  ${src} -> ${dst} [label="  ${sortedInputs.join(', ')}  "];\n`;
+            }
+            dot += '}\n';
+            return dot;
+        }
+
+        function renderFSM() {
+            const input = document.getElementById('fsmInput').value;
+            const outputArea = document.getElementById('output-area');
+            
+            try {
+                const dotString = parseToDot(input);
+                var viz = new Viz();
+                viz.renderSVGElement(dotString)
+                .then(function(element) {
+                    outputArea.innerHTML = "";
+                    outputArea.appendChild(element);
+                    // 【在此處加上 replace 來過濾非法實體】
+                    currentSVG = element.outerHTML.replace(/&nbsp;/g, '&#160;');
+                })
+                .catch(error => {
+                    outputArea.innerHTML = `<div style="color: ${getComputedStyle(document.documentElement).getPropertyValue('--error-color')}; font-size: 0.9rem;">渲染失敗，Graphviz 解析錯誤。<br>錯誤訊息：${error}</div>`;
+                });
+            } catch (err) {
+                outputArea.innerHTML = `<div style="color: red; font-size: 0.9rem;">語法解析錯誤，請確認 Noam 格式正確（特別是 transitions 段落）。</div>`;
+            }
+        }
+
+        function downloadSVG() {
+            if (!currentSVG) return alert('請先渲染圖形！');
+            
+            let svgData = currentSVG;
+            // 補上標準的 XML 宣告標頭，讓瀏覽器將其視為獨立的合法圖形檔案
+            if (!svgData.startsWith('<?xml')) {
+                svgData = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n' + svgData;
+            }
+            
+            const blob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'fsm_diagram.svg';
+            document.body.appendChild(a); // 增加這行以提高各瀏覽器的相容性
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function downloadPNG() {
+            if (!currentSVG) return alert('請先渲染圖形！');
+            
+            // 獲取原始 SVG 元素
+            const svgElement = document.getElementById('output-area').querySelector('svg');
+            if (!svgElement) return;
+
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+            
+            // 增加解析度乘數，使下載的圖片更清晰
+            const scale = 2; 
+            canvas.width = svgElement.viewBox.baseVal.width * scale;
+            canvas.height = svgElement.viewBox.baseVal.height * scale;
+
+            // 轉換 SVG 為 base64 以供圖片加載
+            const svgData = new XMLSerializer().serializeToString(svgElement);
+            const svg64 = btoa(unescape(encodeURIComponent(svgData)));
+            const b64Start = 'data:image/svg+xml;base64,';
+            const image64 = b64Start + svg64;
+
+            img.onload = function() {
+                // 繪製白色背景
+                ctx.fillStyle = 'white'; 
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // 繪製圖片
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                
+                const a = document.createElement('a');
+                a.href = canvas.toDataURL('image/png');
+                a.download = 'fsm_diagram.png';
+                a.click();
+            };
+            img.onerror = function() {
+                alert('PNG 轉換失敗，可能是瀏覽器相容性問題。');
+            }
+            img.src = image64;
+        }
+
+        function resetExample() {
+            document.getElementById('fsmInput').value = defaultExample;
+            renderFSM();
+        }
+
+        // 載入時自動渲染一次
+        window.onload = renderFSM;
+    </script>
+</body>
+</html>
